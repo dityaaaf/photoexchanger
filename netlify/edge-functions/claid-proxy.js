@@ -1,8 +1,6 @@
 // netlify/edge-functions/claid-proxy.js
-// Server-side proxy for Claid.ai API to avoid CORS issues in production.
-// Routes: /api/claid/image/edit/upload → https://api.claid.ai/v1/image/edit/upload
-// 
-// IMPORTANT: Add CLAID_API_KEY (without VITE_ prefix) to your Netlify environment variables.
+// Proxies POST /api/claid/image/edit/upload → https://api.claid.ai/v1/image/edit/upload
+// Runs on Deno (Netlify Edge Runtime). API key stored server-side only.
 
 export default async (request) => {
   // Handle CORS preflight
@@ -12,34 +10,40 @@ export default async (request) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Allow-Headers': '*',
       },
     });
   }
 
-  // Get API key from Netlify environment (server-side only, never exposed to browser)
+  // Read API key from Netlify env var (set in Netlify Dashboard → Site Settings → Env Vars)
   const apiKey = Deno.env.get('CLAID_API_KEY');
 
   if (!apiKey) {
     return new Response(
-      JSON.stringify({ error: 'CLAID_API_KEY is not configured in Netlify environment variables.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: 'Server configuration error: CLAID_API_KEY is not set in Netlify environment variables.',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }
     );
   }
 
-  // Clone request headers and set Authorization
-  const headers = new Headers(request.headers);
-  headers.set('Authorization', `Bearer ${apiKey}`);
-  // Remove host header to avoid conflicts
-  headers.delete('host');
-
   try {
+    // Read the full body as ArrayBuffer (more reliable than streaming in Deno edge)
+    const bodyBuffer = await request.arrayBuffer();
+
+    // Get the Content-Type (must preserve multipart/form-data boundary)
+    const contentType = request.headers.get('content-type') ?? '';
+
     const claidResponse = await fetch('https://api.claid.ai/v1/image/edit/upload', {
       method: 'POST',
-      headers,
-      body: request.body,
-      // @ts-ignore — duplex is required for streaming body in Deno
-      duplex: 'half',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': contentType,
+      },
+      body: bodyBuffer,
     });
 
     const responseText = await claidResponse.text();
@@ -51,10 +55,17 @@ export default async (request) => {
         'Access-Control-Allow-Origin': '*',
       },
     });
+
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 502, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: String(err),
+        message: 'Edge function failed to reach Claid API',
+      }),
+      {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }
     );
   }
 };
