@@ -42,10 +42,6 @@ export async function processImageWithClaid(
 ): Promise<string> {
   const API_KEY = import.meta.env.VITE_CLAID_API_KEY || '';
 
-  if (!API_KEY) {
-    throw new Error('Claid API Key is missing. Please add VITE_CLAID_API_KEY to your .env file.');
-  }
-
   // Build multipart/form-data payload
   const formData = new FormData();
 
@@ -57,14 +53,17 @@ export async function processImageWithClaid(
   const dataPayload = JSON.stringify({ operations });
   formData.append('data', dataPayload);
 
+  const headers: Record<string, string> = {};
+  if (API_KEY) {
+    headers['Authorization'] = `Bearer ${API_KEY}`;
+  }
+
   try {
     const response = await fetch(CLAID_API_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        // NOTE: Do NOT set Content-Type manually — browser will set multipart/form-data
-        //       with the correct boundary automatically when using FormData.
-      },
+      headers,
+      // NOTE: Do NOT set Content-Type manually — browser will set multipart/form-data
+      //       with the correct boundary automatically when using FormData.
       body: formData,
     });
 
