@@ -2,7 +2,5 @@
   command = "npm run build"
   publish = "dist"
 
-# Edge Function: proxy /api/claid/* to Claid.ai API server-side (avoids CORS)
-[[edge_functions]]
-  path = "/api/claid/image/edit/upload"
-  function = "claid-proxy"
+# Regular Netlify Function (Node.js) handles /api/claid/* via export const config in the .mjs file
+# Edge function removed — use process.env instead of Deno.env for reliability
